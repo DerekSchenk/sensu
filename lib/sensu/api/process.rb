@@ -647,6 +647,66 @@ module Sensu
         end
       end
 
+     aget %r{^/aggregates?/([\w\.-]+)/(latest|previous)/?$} do | check_name, check_issued|
+         settings.redis.smembers("aggregates:#{check_name}") do |aggregates|
+           unless aggregates.empty?
+             aggregates.reverse!
+             aggregates.map! do |issued|
+               issued.to_i
+             end
+             age = integer_parameter(params[:age])
+             if age
+               timestamp = Time.now.to_i - age
+               aggregates.reject! do |issued|
+                 issued > timestamp
+               end
+             end
+ 
+             if check_issued == "previous" and aggregates.size > 1
+                 auto_issued = aggregates.at(1)
+             else
+                 auto_issued = aggregates.at(0)
+             end
+ 
+             result_set = "#{check_name}:#{auto_issued}"
+               settings.redis.hgetall("aggregate:#{result_set}") do |aggregate|
+               unless aggregate.empty?
+                     response = aggregate.inject(Hash.new) do |totals, (status, count)|
+                       totals[status] = Integer(count)
+                       totals
+                     end
+                     settings.redis.hgetall("aggregation:#{result_set}") do |results|
+                       parsed_results = results.inject(Array.new) do |parsed, (client_name, check_json)|
+                             check = Sensu::JSON.load(check_json)
+                             parsed << check.merge(:client => client_name)
+                       end
+                       if params[:summarize]
+                             options = params[:summarize].split(",")
+                             if options.include?("output")
+                               outputs = Hash.new(0)
+                               parsed_results.each do |result|
+                                     outputs[result[:output]] += 1
+                               end
+                               response[:outputs] = outputs
+                             end
+                       end
+                       if params[:results]
+                             response[:results] = parsed_results
+                       end
+		    	response[:issued] = auto_issued
+                       body Sensu::JSON.dump(response)
+                     end
+               else
+                     not_found!
+               end
+             end
+           else
+             not_found!
+           end
+         end
+       end
+
+
       aget %r{^/aggregates?/([\w\.-]+)/([\w\.-]+)/?$} do |check_name, check_issued|
         result_set = "#{check_name}:#{check_issued}"
         settings.redis.hgetall("aggregate:#{result_set}") do |aggregate|
