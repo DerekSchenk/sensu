@@ -240,8 +240,8 @@ module Sensu
         end
 
         def publish_check_result(client_name, check)
-          check[:issued] = Time.now.to_i
-          check[:executed] = Time.now.to_i
+          check[:issued] ||= Time.now.to_i
+          check[:executed] ||= Time.now.to_i
           check[:status] ||= 0
           payload = {
             :client => client_name,
@@ -772,7 +772,10 @@ module Sensu
           :name => {:type => String, :nil_ok => false, :regex => /\A[\w\.-]+\z/},
           :output => {:type => String, :nil_ok => false},
           :status => {:type => Integer, :nil_ok => true},
-          :source => {:type => String, :nil_ok => true, :regex => /\A[\w\.-]+\z/}
+          :source => {:type => String, :nil_ok => true, :regex => /\A[\w\.-]+\z/},
+          :issued => {:type => Integer, :nil_ok => true},
+          :timestamp => {:type => Integer, :nil_ok => true},
+          :executed => {:type => Integer, :nil_ok => true}
         }
         read_data(rules) do |data|
           publish_check_result("sensu-api", data)
